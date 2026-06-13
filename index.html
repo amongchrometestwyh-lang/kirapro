@@ -313,6 +313,7 @@
             position: relative;
             min-height: 500px;
             background: rgba(0,0,0,0.02);
+            overflow: hidden;
         }
 
         #canvas-preview {
@@ -322,6 +323,7 @@
             border: 1px solid var(--border-color);
             display: none;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            /* Cursor updates via JavaScript during interaction */
         }
     </style>
 </head>
@@ -374,7 +376,8 @@
                 </select>
 
                 <label class="control-label">ATTACH CORE IMAGE (OPTIONAL)</label>
-                <input type="file" id="post-image" accept="image/*" style="border: none; padding: 0;" onchange="autoGenerate()">
+                <!-- Added resetImagePos() on change to center new images -->
+                <input type="file" id="post-image" accept="image/*" style="border: none; padding: 0;" onchange="resetImagePos(); autoGenerate()">
                 
                 <label class="control-label">IMAGE PREVIEW SCALE</label>
                 <input type="range" id="image-scale" min="10" max="100" value="100" oninput="autoGenerate()">
@@ -517,34 +520,127 @@
         let generatedDataUrl = null;
         let previewTimer;
 
-        // Auto-update preview while typing/sliding
-        function autoGenerate() {
-            clearTimeout(previewTimer);
-            previewTimer = setTimeout(generateAndPreview, 100);
+        // --- IMAGE DRAGGING LOGIC ---
+        let customImageX = null;
+        let customImageY = null;
+        let currentImageWidth = 0;
+        let currentImageHeight = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let hasUploadedImage = false;
+
+        function resetImagePos() {
+            customImageX = null;
+            customImageY = null;
         }
 
-        function generateAndPreview() {
+        // Get accurate mouse/touch position mapped to the internal canvas resolution
+        function getCanvasPosition(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        // Mouse & Touch Events for Dragging
+        function handleStart(e) {
+            if (!hasUploadedImage) return;
+            const pos = getCanvasPosition(e);
+            
+            // Check if click is inside the uploaded image bounds
+            if (pos.x >= customImageX && pos.x <= customImageX + currentImageWidth &&
+                pos.y >= customImageY && pos.y <= customImageY + currentImageHeight) {
+                isDragging = true;
+                dragStartX = pos.x;
+                dragStartY = pos.y;
+                canvas.style.cursor = 'grabbing';
+                // Prevent scrolling on mobile while dragging image
+                if(e.type === 'touchstart') e.preventDefault(); 
+            }
+        }
+
+        function handleMove(e) {
+            if (!hasUploadedImage) return;
+            const pos = getCanvasPosition(e);
+
+            // Change cursor on hover
+            if (!isDragging) {
+                if (pos.x >= customImageX && pos.x <= customImageX + currentImageWidth &&
+                    pos.y >= customImageY && pos.y <= customImageY + currentImageHeight) {
+                    canvas.style.cursor = 'grab';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+                return;
+            }
+
+            // Perform drag
+            const dx = pos.x - dragStartX;
+            const dy = pos.y - dragStartY;
+            customImageX += dx;
+            customImageY += dy;
+            dragStartX = pos.x;
+            dragStartY = pos.y;
+            
+            // Redraw immediately for smooth dragging
+            generateAndPreview(true);
+        }
+
+        function handleEnd() {
+            isDragging = false;
+            canvas.style.cursor = 'default';
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', handleEnd);
+        
+        canvas.addEventListener('touchstart', handleStart, {passive: false});
+        canvas.addEventListener('touchmove', handleMove, {passive: false});
+        canvas.addEventListener('touchend', handleEnd);
+
+        // --- GENERATION LOGIC ---
+        function autoGenerate() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => generateAndPreview(false), 100);
+        }
+
+        // isDraggingUpdate is true if we are just redrawing during a mouse drag
+        function generateAndPreview(isDraggingUpdate = false) {
             const title = document.getElementById('post-title').value || "UNTITLED TRANSMISSION";
             const content = document.getElementById('post-content').value || "Awaiting core text...";
             const imageFile = document.getElementById('post-image').files[0];
 
-            canvas.width = 1000;
-            canvas.style.display = 'block';
+            // Only update dimensions if we aren't actively dragging (prevents canvas resize stutter)
+            if (!isDraggingUpdate) {
+                canvas.width = 1000;
+                canvas.style.display = 'block';
+            }
 
             if (imageFile) {
+                hasUploadedImage = true;
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = new Image();
-                    img.onload = function() { drawCanvasContent(title, content, img); };
+                    img.onload = function() { drawCanvasContent(title, content, img, isDraggingUpdate); };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(imageFile);
             } else {
-                drawCanvasContent(title, content, null);
+                hasUploadedImage = false;
+                drawCanvasContent(title, content, null, isDraggingUpdate);
             }
         }
 
-        function drawCanvasContent(title, content, uploadedImage) {
+        function drawCanvasContent(title, content, uploadedImage, isDraggingUpdate) {
             const padding = 60;
             const titleHeight = 80;
             const dateHeight = 40;
@@ -553,34 +649,36 @@
             const ratioSelect = document.getElementById('canvas-ratio').value;
             const scalePct = document.getElementById('image-scale').value / 100;
 
-            let imageHeight = 0;
-            let imageWidth = 0;
+            let layoutImageHeight = 0;
 
+            // Calculate Image Size
             if (uploadedImage) {
-                // Calculate size based on the scale slider
-                imageWidth = (canvas.width - (padding * 2)) * scalePct;
-                const ratio = imageWidth / uploadedImage.width;
-                imageHeight = uploadedImage.height * ratio;
+                currentImageWidth = (canvas.width - (padding * 2)) * scalePct;
+                const ratio = currentImageWidth / uploadedImage.width;
+                currentImageHeight = uploadedImage.height * ratio;
+                layoutImageHeight = currentImageHeight; // Space reserved in layout calculation
             }
 
             ctx.font = '24px -apple-system, sans-serif';
             const wrappedContent = wrapText(content, canvas.width - (padding * 2), 36);
             const textHeight = wrappedContent.lines.length * 36;
 
-            // 1. Determine final canvas height based on aspect ratio
-            const dynamicHeight = padding + titleHeight + dateHeight + (uploadedImage ? imageHeight + padding : 0) + textHeight + (padding * 2) + watermarkHeight + padding;
+            // Set Canvas Height (only if not actively dragging)
+            if (!isDraggingUpdate) {
+                const dynamicHeight = padding + titleHeight + dateHeight + (uploadedImage ? layoutImageHeight + padding : 0) + textHeight + (padding * 2) + watermarkHeight + padding;
 
-            if (ratioSelect === '1:1') canvas.height = 1000;
-            else if (ratioSelect === '3:4') canvas.height = 1333;
-            else if (ratioSelect === '9:16') canvas.height = 1778;
-            else if (ratioSelect === '16:9') canvas.height = 562;
-            else canvas.height = dynamicHeight; // Auto
+                if (ratioSelect === '1:1') canvas.height = 1000;
+                else if (ratioSelect === '3:4') canvas.height = 1333;
+                else if (ratioSelect === '9:16') canvas.height = 1778;
+                else if (ratioSelect === '16:9') canvas.height = 562;
+                else canvas.height = dynamicHeight; // Auto
+            }
 
-            // 2. Draw Background
+            // Draw Background
             ctx.fillStyle = '#0d0d0d';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 3. Draw Watermarks & Ornate Elements
+            // Draw Watermarks & Ornate Elements
             ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.font = '200px serif';
             ctx.fillText('𝕶', canvas.width - 250, 250);
@@ -608,12 +706,12 @@
 
             ctx.letterSpacing = '0px';
 
-            // 4. Draw Title
+            // Draw Title
             ctx.fillStyle = '#f4f4f4';
             ctx.font = '400 64px -apple-system, sans-serif';
             ctx.fillText(title, padding, padding + 70);
 
-            // 5. Draw Timestamp
+            // Draw Timestamp
             const timestamp = `TRANSMITTED: ${new Date().toLocaleTimeString()} [${new Date().toLocaleDateString()}]`;
             ctx.fillStyle = '#888888';
             ctx.font = '12px sans-serif';
@@ -621,26 +719,34 @@
             ctx.fillText(timestamp, padding, padding + 70 + 40);
             ctx.letterSpacing = '0px';
 
-            // 6. Draw Uploaded Image (Centered based on scale)
-            let currentY = padding + titleHeight + dateHeight + padding;
+            // Establish standard text starting point based on layout
+            let standardLayoutY = padding + titleHeight + dateHeight + padding;
+
+            // Draw Uploaded Image at Custom Coordinates
             if (uploadedImage) {
-                const imgX = padding + ((canvas.width - (padding * 2) - imageWidth) / 2);
-                ctx.drawImage(uploadedImage, imgX, currentY, imageWidth, imageHeight);
-                currentY += imageHeight + padding;
+                // If coordinates aren't set yet (new image), center it natively
+                if (customImageX === null || customImageY === null) {
+                    customImageX = padding + ((canvas.width - (padding * 2) - currentImageWidth) / 2);
+                    customImageY = standardLayoutY;
+                }
+                
+                ctx.drawImage(uploadedImage, customImageX, customImageY, currentImageWidth, currentImageHeight);
+                standardLayoutY += layoutImageHeight + padding; // Push text down natively
             }
 
-            // 7. Draw Content Text
+            // Draw Content Text
             ctx.fillStyle = '#f4f4f4';
             ctx.font = '24px -apple-system, sans-serif';
             ctx.lineHeight = 36;
             
             wrappedContent.lines.forEach((line, index) => {
                 // Stop drawing text if it falls off the bottom of a fixed-ratio canvas
-                if (currentY + (index * 36) < canvas.height - padding - watermarkHeight) {
-                    ctx.fillText(line, padding, currentY + (index * 36));
+                if (standardLayoutY + (index * 36) < canvas.height - padding - watermarkHeight) {
+                    ctx.fillText(line, padding, standardLayoutY + (index * 36));
                 }
             });
 
+            // Update Download Button
             generatedDataUrl = canvas.toDataURL('image/png');
             downloadBtn.disabled = false;
             downloadBtn.style.backgroundColor = '#f4f4f4';

@@ -149,7 +149,7 @@
             margin-top: auto;
         }
 
-        /* Blog Display Area (Displays actual images uploaded) */
+        /* Blog Display Area */
         #feed-area {
             display: none;
             max-width: 900px;
@@ -206,7 +206,7 @@
             display: block;
         }
 
-        /* Secret Admin Panel (Image Generator Editor) */
+        /* Secret Admin Panel */
         #admin-panel {
             position: fixed;
             top: 0;
@@ -258,31 +258,49 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
             max-width: 400px;
             width: 100%;
         }
 
-        .editor-form input, .editor-form textarea {
+        .editor-form input[type="text"], .editor-form textarea, .editor-form select {
             background: transparent;
             border: 1px solid var(--border-color);
             color: var(--text-color);
             padding: 15px;
-            font-size: 16px;
+            font-size: 14px;
             border-radius: 4px;
             outline: none;
         }
 
+        .editor-form select option {
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
         .editor-form textarea {
-            min-height: 200px;
+            min-height: 150px;
             resize: vertical;
         }
 
-        .editor-form input:focus, .editor-form textarea:focus {
+        .editor-form input:focus, .editor-form textarea:focus, .editor-form select:focus {
             border-color: var(--text-color);
         }
 
-        /* Image generation controls */
+        .control-label {
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: var(--nav-text);
+            text-transform: uppercase;
+            margin-bottom: -5px;
+            margin-top: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--text-color);
+        }
+
         .preview-pane {
             flex: 2;
             border: 1px dashed var(--border-color);
@@ -294,17 +312,20 @@
             padding: 20px;
             position: relative;
             min-height: 500px;
+            background: rgba(0,0,0,0.02);
         }
 
         #canvas-preview {
             max-width: 100%;
-            height: auto;
+            max-height: 70vh;
+            object-fit: contain;
             border: 1px solid var(--border-color);
-            display: none; /* Only show when generated */
+            display: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
     </style>
 </head>
-<body class="light-mode"> <!-- Changed default to light-mode, based on screenshot 0 -->
+<body class="light-mode">
 
     <nav>
         <div class="nav-left">
@@ -316,7 +337,6 @@
         </div>
     </nav>
 
-    <!-- Main Landing View -->
     <main id="landing-area">
         <div class="logo-mark">✦</div>
         <h1>к i г л</h1>
@@ -324,12 +344,8 @@
         <button class="main-btn" onclick="toggleFeed()">ACCESS PUBLIC FEED</button>
     </main>
 
-    <!-- Public Feed View (This is where the 'Real Site' is) -->
-    <div id="feed-area">
-        <!-- New post images are loaded here -->
-    </div>
+    <div id="feed-area"></div>
 
-    <!-- Hidden Password Modal (Step 2) -->
     <div id="password-modal">
         <div class="password-box">
             <label>ENTER ACCESS KEY</label>
@@ -337,7 +353,6 @@
         </div>
     </div>
 
-    <!-- Hidden Admin Panel (Image Generator Editor) -->
     <div id="admin-panel">
         <div class="admin-header">
             <h2>Image Transmission Generator</h2>
@@ -346,14 +361,26 @@
         
         <div class="editor-container">
             <div class="editor-form">
-                <input type="text" id="post-title" placeholder="TRANSMISSION TITLE...">
-                <textarea id="post-content" placeholder="Type your core transmission text here...\n(Line breaks are kept)"></textarea>
+                <input type="text" id="post-title" placeholder="TRANSMISSION TITLE..." oninput="autoGenerate()">
+                <textarea id="post-content" placeholder="Type your core transmission text here...\n(Line breaks are kept)" oninput="autoGenerate()"></textarea>
                 
-                <label style="font-size: 11px; letter-spacing: 2px; color: var(--nav-text);">ATTACH CORE IMAGE (OPTIONAL)</label>
-                <input type="file" id="post-image" accept="image/*" style="border: none; padding: 0;">
+                <label class="control-label">ASPECT RATIO</label>
+                <select id="canvas-ratio" onchange="autoGenerate()">
+                    <option value="auto">Auto (Fits Content)</option>
+                    <option value="1:1">Square (1:1)</option>
+                    <option value="3:4">Classic (3:4)</option>
+                    <option value="9:16">Portrait (9:16)</option>
+                    <option value="16:9">Landscape (16:9)</option>
+                </select>
+
+                <label class="control-label">ATTACH CORE IMAGE (OPTIONAL)</label>
+                <input type="file" id="post-image" accept="image/*" style="border: none; padding: 0;" onchange="autoGenerate()">
                 
-                <button class="main-btn" onclick="generateAndPreview()" style="margin-top: 20px;">1. GENERATE PREVIEW</button>
-                <button class="main-btn" onclick="downloadImagePost()" style="margin-top: 10px; background-color: var(--border-color); color: var(--nav-text);" id="dl-btn" disabled>2. DOWNLOAD PNG TRANS</button>
+                <label class="control-label">IMAGE PREVIEW SCALE</label>
+                <input type="range" id="image-scale" min="10" max="100" value="100" oninput="autoGenerate()">
+                
+                <button class="main-btn" onclick="generateAndPreview()" style="margin-top: 10px;">1. RENDER FINAL PREVIEW</button>
+                <button class="main-btn" onclick="downloadImagePost()" style="margin-top: 5px; background-color: var(--border-color); color: var(--nav-text);" id="dl-btn" disabled>2. DOWNLOAD PNG TRANS</button>
             </div>
             
             <div class="preview-pane">
@@ -366,21 +393,10 @@
 
     <script>
         // =========================================================================
-        // =========================================================================
-        // !!! ATTENTION !!! THE real site part lives here.
-        // Step 3 (The Code Part): You must put the exact names of the image 
-        // files you have uploaded to the SAME FOLDER as this HTML file into 
-        // this list array.
-        
-        // Example with one post: const POST_FILES = ['post1.png'];
-        // Example with two posts: const POST_FILES = ['post1.png', 'post2.png'];
-        
-        const POST_FILES = ['kira1.png' , 'kira2.png']; // <--- EDIT THIS ARRAY VARIABLE DIRECTLY !!!
-        
-        // =========================================================================
+        // ADD YOUR IMAGE FILENAMES HERE (e.g., ['post1.png', 'post2.png'])
+        const POST_FILES = ['kira1.png' , 'kira2.png']; 
         // =========================================================================
 
-        // --- 1. Clock Logic ---
         function updateTime() {
             const now = new Date();
             let hours = now.getHours();
@@ -394,8 +410,7 @@
         setInterval(updateTime, 1000);
         updateTime();
 
-        // --- 2. Theme Toggle ---
-        let isLight = true; // Based on image 0
+        let isLight = true;
         function toggleTheme() {
             isLight = !isLight;
             document.body.classList.toggle('light-mode');
@@ -403,7 +418,6 @@
             themeBtn.innerText = isLight ? "THEME: LIGHT" : "THEME: DARK";
         }
 
-        // --- 3. View Toggling (Real Site Display Logic) ---
         function toggleFeed() {
             const landing = document.getElementById('landing-area');
             const feed = document.getElementById('feed-area');
@@ -419,30 +433,26 @@
                 feed.style.display = 'block';
                 feedBtn.innerText = 'HOME SYSTEM';
                 feedBtn.classList.remove('active');
-                loadPostImages(); // Load posts from the list array defined above
+                loadPostImages();
             }
         }
 
-        // --- 4. Loading the Images (The Real Site Display) ---
         function loadPostImages() {
             const feedArea = document.getElementById('feed-area');
-            feedArea.innerHTML = ''; // Clear previous
+            feedArea.innerHTML = ''; 
 
             if (POST_FILES.length === 0) {
                 feedArea.innerHTML = '<p style="text-align:center; color: var(--nav-text); letter-spacing: 3px; font-size:12px; margin-top:100px;">NO DATA TRANSMISSIONS IN NETWORK.</p>';
                 return;
             }
 
-            // Loop through the list of filenames you created and make image tags
             POST_FILES.forEach(filename => {
                 const img = document.createElement('img');
-                img.src = filename; // This assumes the image is in the SAME folder
+                img.src = filename; 
                 img.alt = `Post: ${filename}`;
                 img.className = 'post-image-display';
                 
-                // Add error handling if file not found
                 img.onerror = function() {
-                    console.error("Could not find file: " + filename + ". Ensure it is in the same folder.");
                     const errorBox = document.createElement('div');
                     errorBox.style.border = '1px solid red';
                     errorBox.style.padding = '20px';
@@ -452,26 +462,21 @@
                     feedArea.appendChild(errorBox);
                     img.remove();
                 };
-
                 feedArea.appendChild(img);
             });
         }
 
-        // --- 5. Secret Code & Password Logic ---
         const SECRET_CODE_1 = "kigl";
         const SECRET_CODE_2_PW = "kira";
         let keyBuffer = "";
 
         document.addEventListener('keydown', (e) => {
-            // Step 1: Listen for kigl
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
 
             keyBuffer += e.key.toLowerCase();
-            
             if (keyBuffer.length > SECRET_CODE_1.length) {
                 keyBuffer = keyBuffer.slice(-SECRET_CODE_1.length);
             }
-
             if (keyBuffer === SECRET_CODE_1) {
                 showPasswordModal();
                 keyBuffer = "";
@@ -497,48 +502,40 @@
                     hidePasswordModal();
                     openAdmin();
                 } else {
-                    alert('ACCESS DENIED. Network terminated.');
+                    alert('ACCESS DENIED.');
                     hidePasswordModal();
                 }
             }
         });
 
-        function openAdmin() {
-            document.getElementById('admin-panel').classList.add('active');
-        }
+        function openAdmin() { document.getElementById('admin-panel').classList.add('active'); }
+        function closeAdmin() { document.getElementById('admin-panel').classList.remove('active'); }
 
-        function closeAdmin() {
-            document.getElementById('admin-panel').classList.remove('active');
-        }
-
-        // --- 6. Image Generation & Download Logic ---
         const canvas = document.getElementById('canvas-preview');
         const ctx = canvas.getContext('2d');
         const downloadBtn = document.getElementById('dl-btn');
         let generatedDataUrl = null;
+        let previewTimer;
+
+        // Auto-update preview while typing/sliding
+        function autoGenerate() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(generateAndPreview, 100);
+        }
 
         function generateAndPreview() {
-            const title = document.getElementById('post-title').value;
-            const content = document.getElementById('post-content').value;
+            const title = document.getElementById('post-title').value || "UNTITLED TRANSMISSION";
+            const content = document.getElementById('post-content').value || "Awaiting core text...";
             const imageFile = document.getElementById('post-image').files[0];
 
-            if (!title || !content) {
-                alert("Both Title and Content required to generate.");
-                return;
-            }
-
-            // Define canvas base properties
-            canvas.width = 1000; // Fixed width for consistent quality
+            canvas.width = 1000;
             canvas.style.display = 'block';
 
-            // Start drawing
             if (imageFile) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const img = new Image();
-                    img.onload = function() {
-                        drawCanvasContent(title, content, img);
-                    };
+                    img.onload = function() { drawCanvasContent(title, content, img); };
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(imageFile);
@@ -547,73 +544,73 @@
             }
         }
 
-        // The core drawing engine
         function drawCanvasContent(title, content, uploadedImage) {
-            // 1. Calculate required dynamic height
             const padding = 60;
-            const watermarkHeight = 60;
             const titleHeight = 80;
             const dateHeight = 40;
+            const watermarkHeight = 60;
+            
+            const ratioSelect = document.getElementById('canvas-ratio').value;
+            const scalePct = document.getElementById('image-scale').value / 100;
+
             let imageHeight = 0;
             let imageWidth = 0;
 
             if (uploadedImage) {
-                // Scale uploaded image to fit canvas width (keeping ratio)
-                const targetWidth = canvas.width - (padding * 2);
-                const ratio = targetWidth / uploadedImage.width;
-                imageWidth = targetWidth;
+                // Calculate size based on the scale slider
+                imageWidth = (canvas.width - (padding * 2)) * scalePct;
+                const ratio = imageWidth / uploadedImage.width;
                 imageHeight = uploadedImage.height * ratio;
             }
 
-            // Word wrap content text for height calculation
             ctx.font = '24px -apple-system, sans-serif';
-            ctx.fillStyle = '#f4f4f4'; // Draw dark background always for high-contrast
-            const wrappedContent = wrapText(content, canvas.width - (padding * 2), 36); // lineHeight=36
+            const wrappedContent = wrapText(content, canvas.width - (padding * 2), 36);
             const textHeight = wrappedContent.lines.length * 36;
 
-            // Set final canvas dynamic height
-            canvas.height = padding + titleHeight + dateHeight + (uploadedImage ? imageHeight + padding : 0) + textHeight + (padding * 2) + watermarkHeight + padding;
+            // 1. Determine final canvas height based on aspect ratio
+            const dynamicHeight = padding + titleHeight + dateHeight + (uploadedImage ? imageHeight + padding : 0) + textHeight + (padding * 2) + watermarkHeight + padding;
 
-            // 2. Clear background with dark theme
-            ctx.fillStyle = '#0d0d0d'; // Clean dark background for high contrast
+            if (ratioSelect === '1:1') canvas.height = 1000;
+            else if (ratioSelect === '3:4') canvas.height = 1333;
+            else if (ratioSelect === '9:16') canvas.height = 1778;
+            else if (ratioSelect === '16:9') canvas.height = 562;
+            else canvas.height = dynamicHeight; // Auto
+
+            // 2. Draw Background
+            ctx.fillStyle = '#0d0d0d';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 3. Draw Watermarks & Ornate زخرفه (زخرفه structure in corner)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; // Ornate watermark color
+            // 3. Draw Watermarks & Ornate Elements
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.font = '200px serif';
-            ctx.fillText('𝕶', canvas.width - 250, 250); // Large stylized K for kigl
+            ctx.fillText('𝕶', canvas.width - 250, 250);
 
-            // Main corner ornaments
             ctx.font = '30px serif';
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fillText('⚜', 30, 60); // Top left ⚜
-            ctx.fillText('⚜', canvas.width - 60, canvas.height - 30); // Bottom right ⚜
+            ctx.fillText('⚜', 30, 60);
+            ctx.fillText('⚜', canvas.width - 60, canvas.height - 30);
             
             ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.font = '24px serif';
-            // Corner borders
             ctx.fillText('╔═══════', 30, 40);
             ctx.fillText('═══════╗', canvas.width - 150, 40);
             ctx.fillText('╚═══════', 30, canvas.height - 30);
             ctx.fillText('═══════╝', canvas.width - 150, canvas.height - 30);
 
-            // Small text watermarks
             ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.font = '12px sans-serif';
             ctx.letterSpacing = '5px';
             ctx.fillText('KIGL TRANSMISSION PRO', padding, padding);
             ctx.fillText('CONFIDENTIAL', canvas.width - padding - 150, canvas.height - padding);
             
-            // Ornate structure text زخرفه (repeated small patterns)
             ctx.font = '10px serif';
             ctx.fillText('✧✦✧✦✧✦✧✦✧✦', padding, canvas.height - padding + 20);
 
-            // Reset ctx properties for main content drawing
             ctx.letterSpacing = '0px';
 
             // 4. Draw Title
-            ctx.fillStyle = '#f4f4f4'; // Bright white
-            ctx.font = '400 64px -apple-system, sans-serif'; // Clean, thin, large font
+            ctx.fillStyle = '#f4f4f4';
+            ctx.font = '400 64px -apple-system, sans-serif';
             ctx.fillText(title, padding, padding + 70);
 
             // 5. Draw Timestamp
@@ -624,37 +621,39 @@
             ctx.fillText(timestamp, padding, padding + 70 + 40);
             ctx.letterSpacing = '0px';
 
-            // 6. Draw Uploaded Image (if provided)
+            // 6. Draw Uploaded Image (Centered based on scale)
             let currentY = padding + titleHeight + dateHeight + padding;
             if (uploadedImage) {
-                ctx.drawImage(uploadedImage, padding, currentY, imageWidth, imageHeight);
+                const imgX = padding + ((canvas.width - (padding * 2) - imageWidth) / 2);
+                ctx.drawImage(uploadedImage, imgX, currentY, imageWidth, imageHeight);
                 currentY += imageHeight + padding;
             }
 
-            // 7. Draw Content Text (with wrap)
+            // 7. Draw Content Text
             ctx.fillStyle = '#f4f4f4';
             ctx.font = '24px -apple-system, sans-serif';
             ctx.lineHeight = 36;
             
             wrappedContent.lines.forEach((line, index) => {
-                ctx.fillText(line, padding, currentY + (index * 36));
+                // Stop drawing text if it falls off the bottom of a fixed-ratio canvas
+                if (currentY + (index * 36) < canvas.height - padding - watermarkHeight) {
+                    ctx.fillText(line, padding, currentY + (index * 36));
+                }
             });
 
-            // --- Finish Generation ---
             generatedDataUrl = canvas.toDataURL('image/png');
             downloadBtn.disabled = false;
             downloadBtn.style.backgroundColor = '#f4f4f4';
             downloadBtn.style.color = '#0d0d0d';
         }
 
-        // Helper to wrap text with line break support (\n)
         function wrapText(text, maxWidth, lineHeight) {
             const paragraphs = text.split('\n');
             const lines = [];
             
             paragraphs.forEach(paragraph => {
                 if (paragraph === "") {
-                    lines.push(""); // Preserve empty lines
+                    lines.push("");
                     return;
                 }
                 const words = paragraph.split(' ');
@@ -674,22 +673,20 @@
                 }
                 lines.push(line.trim());
             });
-
             return { lines: lines };
         }
 
-        // Final Download Logic
         function downloadImagePost() {
             if (!generatedDataUrl) return;
-            const title = document.getElementById('post-title').value.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            const filename = `kigl_post_${title}_${Date.now()}.png`;
+            const title = document.getElementById('post-title').value.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'post';
+            const filename = `kigl_${title}_${Date.now()}.png`;
 
             const link = document.createElement('a');
             link.download = filename;
             link.href = generatedDataUrl;
             link.click();
             
-            alert(`✅ Transmission data downloaded. Save '${filename}' to the SAME FOLDER as this HTML file. \n\nThen manually open this HTML file in your code editor and update the POST_FILES list to include this filename.`);
+            alert(`✅ Downloaded as '${filename}'.\n\nDon't forget to add this filename to the POST_FILES array in your HTML code to display it on the public feed!`);
             
             downloadBtn.disabled = true;
             downloadBtn.style.backgroundColor = 'var(--border-color)';
